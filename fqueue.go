@@ -89,6 +89,10 @@ func (l *Queue) handle() {
 	for {
 		select {
 		case <-l.closed:
+			close(l.ch)
+			for range l.ch {
+				// Drain the channel.
+			}
 			return
 		case exec := <-l.ch:
 			hadErr = l.op(hadErr, exec)
