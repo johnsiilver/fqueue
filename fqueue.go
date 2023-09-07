@@ -41,7 +41,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cenk/backoff"
+	"github.com/cenkalti/backoff/v4"
 )
 
 // Doer is a function that does something. Make sure that any Context that
