@@ -1,7 +1,38 @@
-// Package fqueue provides a type for allowing a function to finish before
-// the next one can be called. This is useful for things such as large database
-// updates where you only want to have a single update running at a time, but it
-// is okay to have multiple updates queued up.
+/*
+Package fqueue provides a type for allowing a function to finish before
+the next one can be called. This is useful for things such as large database
+updates where you only want to have a single update running at a time, but it
+is okay to have multiple updates queued up as to not slow down processing with
+some limit to keep memory usage in check.
+
+Example usage:
+
+	// Create a Queue with a limit of 1, which means you can only queue
+	// up 1 Doer at a time. This has a backoff policy that will retry
+	// the Doer if it returns an error with an exponential backoff.
+	// It will only retry 10 times before giving up.
+	q := New(
+		Args{
+			Limit:   1,
+			Backoff: backoff.NewExponentialBackOff(),
+			MaxRetries: 10, // or any other number that suits your needs
+		},
+	)
+
+	for i := 0; i < 10; i++ {
+		// Queue up a Doer to be executed.
+		err := q.Do(context.Background(), func(ctx context.Context) error {
+			// Do something that takes a while.
+			return nil
+		}
+		if err != nil {
+			break
+		}
+	}
+	if err := q.Wait(); err != nil {
+		// Handle the error.
+	}
+*/
 package fqueue
 
 import (
@@ -42,12 +73,15 @@ type Queue struct {
 type Args struct {
 	// Backoff provides a backoff implementation if you want the Queue
 	// to retry Doers that return an error. Without this, a failure results
-	// in the Queue becoming unusable and returning the error on every Do call.
+	// in the Queue becoming unusable and every subsequent Do() call will
+	// return the encountered error. If this is nil, then this will use
+	// backoff.StopBackOff, which acts as if no backoff is being used.
 	Backoff backoff.BackOff
 	// MaxRetries is the maximum number of times a Doer will be retried.
 	// If this is <= 0, this will happen forever.
 	MaxRetries int
 	// Limit is the maximum number of Doers that can queue up before Do blocks.
+	// If set to <= 0, then this will panic.
 	Limit int
 }
 
@@ -64,6 +98,10 @@ func (a Args) validate() error {
 func New(args Args) *Queue {
 	if err := args.validate(); err != nil {
 		panic(err)
+	}
+
+	if args.Backoff == nil {
+		args.Backoff = &backoff.StopBackOff{}
 	}
 
 	l := &Queue{
